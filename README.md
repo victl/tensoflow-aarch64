@@ -8,6 +8,12 @@
 
 For lazy guys, checkout my [releases](https://github.com/victl/tensoflow-aarch64/releases) here.
 
+The patch file is located in the project root [tf.patch](tf.patch), can be applied to the original tf-1.14.0 (not this repo, as it's already patched):
+
+```
+patch -p1 < tf.patch
+```
+
 You probably need to install the same required software packages following the official TF documentation. I'll list some of them here (deb packages not listed, because I'm building TF in docker, the `apt-get` list ls tooooo long):
 
 ```
@@ -16,7 +22,7 @@ sudo -H pip3 install -U numpy matplotlib fire six yapf awscli wheel setuptools m
 sudo -H pip3 install -U keras_applications==1.0.6 keras_preprocessing==1.0.5 --no-deps
 ```
 
-** Configure **
+**Configure**
 
 ```
 PYTHON_BIN_PATH=/usr/bin/python3.6 \
