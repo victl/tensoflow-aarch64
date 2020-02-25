@@ -1,0 +1,119 @@
+diff --unified --recursive --text tensorflow-original/.bazelrc tensorflow-1.14.0/.bazelrc
+--- tensorflow-original/.bazelrc	2019-06-18 22:48:23.000000000 +0000
++++ tensorflow-1.14.0/.bazelrc	2020-02-10 20:06:43.212625796 +0000
+@@ -112,3 +112,33 @@
+ 
+ # Put user-specific options in .bazelrc.user
+ try-import %workspace%/.bazelrc.user
++
++###
++## .bazelrc adapted to ml-base image for Jetson devices
++####
++
++# Options used to build with CUDA.
++build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
++build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
++
++# Jetson does not support NCCL
++build:jetson --define=no_nccl_support=true
++build:nano --define=maxrregcount=80
++build:xavier --define=maxrregcount=255
++
++# Processor native optimizations (depends on build host capabilities).
++build:nativeopt --copt=-march=native
++build:nativeopt --host_copt=-march=native
++build:nativeopt --copt=-O3
++
++build --spawn_strategy=standalone
++build --genrule_strategy=standalone
++
++build --define=grpc_no_ares=true
++
++build -c opt
++
++# Adding --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0" creates parity with TF
++# compilation options. It also addresses memory use due to
++# copy-on-write semantics of std::strings of the older ABI.
++# build --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0
+diff --unified --recursive --text tensorflow-original/third_party/gpus/crosstool/BUILD.tpl tensorflow-1.14.0/third_party/gpus/crosstool/BUILD.tpl
+--- tensorflow-original/third_party/gpus/crosstool/BUILD.tpl	2019-06-18 22:48:23.000000000 +0000
++++ tensorflow-1.14.0/third_party/gpus/crosstool/BUILD.tpl	2020-02-10 19:06:33.192430436 +0000
+@@ -29,6 +29,7 @@
+         "x64_windows|msvc-cl": ":cc-compiler-windows",
+         "x64_windows": ":cc-compiler-windows",
+         "arm": ":cc-compiler-local",
++        "aarch64": ":cc-compiler-local",
+         "k8": ":cc-compiler-local",
+         "piii": ":cc-compiler-local",
+         "ppc": ":cc-compiler-local",
+diff --git a/tensorflow/lite/kernels/internal/depthwiseconv_quantized_test.cc b/tensorflow/lite/kernels/internal/depthwiseconv_quantized_test.cc
+index 8baf2c7253cd4..fd5b89eaf73e4 100644
+--- a/tensorflow/lite/kernels/internal/depthwiseconv_quantized_test.cc
++++ b/tensorflow/lite/kernels/internal/depthwiseconv_quantized_test.cc
+@@ -170,7 +170,8 @@ inline void DispatchDepthwiseConv(
+       // This is compiled-in even if dot-product instructions are unavailable.
+       // However, tests should skip dot-product testing in that case and not
+       // call this code.
+-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
++#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
++    defined(__clang__)
+       DotProduct3x3KernelType kernel_type =
+           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+               input_shape, filter_shape, params);
+@@ -683,7 +684,8 @@ void TestOneDepthwiseConv3x3Filter(
+ }
+ 
+ void TestOneNeonDot3x3(const TestParam& test_param) {
+-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
++#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
++    defined(__clang__)
+   CpuBackendContext backend_context;
+   ruy::Context* ruy_context = backend_context.ruy_context();
+   const auto ruy_paths = ruy_context != nullptr
+@@ -854,7 +856,8 @@ INSTANTIATE_TEST_SUITE_P(
+     TestParam::TestNameSuffix);
+ #endif
+ 
+-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
++#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
++    defined(__clang__)
+ INSTANTIATE_TEST_SUITE_P(
+     NeonAsm, DepthwiseConvTest,
+     testing::Combine(
+diff --git a/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h b/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h
+index 23940e3c33259..8b57c3ed65e05 100644
+--- a/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h
++++ b/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h
+@@ -2006,7 +2006,8 @@ inline void DepthwiseConvWithRounding(
+ 
+ // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+ // Jetson TX-2. This compiler does not support the offsetof() macro.
+-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
++#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
++    defined(__clang__)
+   // Dispatch to dot-product 3x3 kernels when supported.
+   if (cpu_flags.neon_dotprod) {
+     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+@@ -2025,6 +2026,8 @@ inline void DepthwiseConvWithRounding(
+     }
+   }
+ 
++#elif defined(__aarch64__) && !defined(GOOGLE_L4T)
++
+   // Dispatch to non-dot-product 3x3 kernels when supported.
+ 
+   const int stride_width = params.stride_width;
+diff --git a/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h b/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h
+index cf2bcb227980e..9f827e988a4fd 100644
+--- a/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h
++++ b/tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h
+@@ -5786,7 +5786,8 @@ struct WorkspacePrefetchWrite<
+ 
+ #endif  // __aarch64__
+ 
+-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
++#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
++    defined(__clang__)
+ // Dot product ops hard-coded
+ 
+ template <>
