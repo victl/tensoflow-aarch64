@@ -6,6 +6,8 @@
 
 **This is an already patched Tensorflow 1.14.0 version, for compiling Python & C++ API on NVIDIA Xavier (also works on Pegasus), tested on CUDA 10.0**
 
+For lazy guys, checkout my [releases](https://github.com/victl/tensoflow-aarch64/releases) here.
+
 You probably need to install the same required software packages following the official TF documentation. I'll list some of them here (deb packages not listed, because I'm building TF in docker, the `apt-get` list ls tooooo long):
 
 ```
@@ -112,8 +114,6 @@ find bazel-bin -name *.so -type f
 ```
 
 Copy those of interest appropriately.
-
-I'll try to release the files I've got.
 
 
 | **`Documentation`** |
